@@ -11,16 +11,18 @@ import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.FetchType;
 import javax.persistence.Id;
+import javax.persistence.JoinColumn;
+import javax.persistence.JoinTable;
+import javax.persistence.ManyToMany;
+import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.OneToOne;
 
 import org.apache.commons.lang.builder.HashCodeBuilder;
 
-import com.cpn.apiomatic.annotation.Documentation;
 import com.cpn.apiomatic.rest.DataTransferObject;
 import com.readysteady.location.Location;
 
-@Documentation("User type hold the user details like first and last name, email, password and " + "snapview id of the owner of the account.It is required while creating an account. It is " + "required while creating an account.")
 @Entity
 public class User implements DataTransferObject<String> {
 
@@ -38,15 +40,28 @@ public class User implements DataTransferObject<String> {
 	@OneToOne(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
 	private Location location;
 	private Date createdOn = new Date();
-	@OneToMany(mappedBy = "user", fetch=FetchType.EAGER)
+	@OneToMany(mappedBy = "user", fetch = FetchType.EAGER)
 	List<Subscription> subscriptions = new ArrayList<>();
-	@OneToMany(mappedBy = "user", fetch=FetchType.EAGER)
+	@OneToMany(mappedBy = "user", fetch = FetchType.EAGER)
 	List<SubscriptionActivity> subscriptionActivies = new ArrayList<>();
 	@Enumerated(EnumType.STRING)
 	private Status status = Status.pendingVerification;
+	@Enumerated(EnumType.STRING)
+	private Role role = Role.user;
+	@ManyToMany
+	@JoinTable(name="UserMatches", joinColumns={@JoinColumn(name="user_id")}, inverseJoinColumns={@JoinColumn(name="match_id")})
+	private List<User> matches;
+	
+
+	@ManyToOne
+	private Domain domain;
+
+	public enum Role {
+		user, admin, owner, superUser;
+	}
 
 	public enum Status {
-		pendingVerification, active, onHold, pendingSubscription;
+		pendingVerification, pendingSubscription, active, onHold, suspended;
 	}
 
 	public long getTotalSubscriptionLength() {
@@ -67,6 +82,38 @@ public class User implements DataTransferObject<String> {
 
 	public boolean isOversubscribed() {
 		return getTotalSubscriptionUsed() > getTotalSubscriptionLength();
+	}
+
+	public List<Subscription> getSubscriptions() {
+		return subscriptions;
+	}
+
+	public void setSubscriptions(List<Subscription> subscriptions) {
+		this.subscriptions = subscriptions;
+	}
+
+	public List<SubscriptionActivity> getSubscriptionActivies() {
+		return subscriptionActivies;
+	}
+
+	public void setSubscriptionActivies(List<SubscriptionActivity> subscriptionActivies) {
+		this.subscriptionActivies = subscriptionActivies;
+	}
+
+	public Role getRole() {
+		return role;
+	}
+
+	public void setRole(Role role) {
+		this.role = role;
+	}
+
+	public Domain getDomain() {
+		return domain;
+	}
+
+	public void setDomain(Domain domain) {
+		this.domain = domain;
 	}
 
 	@Override
@@ -175,6 +222,14 @@ public class User implements DataTransferObject<String> {
 
 	public Status getStatus() {
 		return status;
+	}
+
+	public List<User> getMatches() {
+		return matches;
+	}
+
+	public void setMatches(List<User> matches) {
+		this.matches = matches;
 	}
 
 }

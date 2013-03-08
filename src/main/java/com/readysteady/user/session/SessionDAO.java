@@ -33,12 +33,10 @@ public class SessionDAO extends AbstractDAO<String, Session> {
 
 	@Scheduled(fixedDelay = 1000 * 60 * 5)
 	public void clearExpiredSessions() {
-		final List<Session> expiredSessions = entityManager.createQuery("from Session where expiresAt < current_date()", Session.class).getResultList();
-		for (final Session s : expiredSessions) {
-			entityManager.remove(s);
-		}
+		entityManager.createQuery("delete from Session where expiresAt < current_date()").executeUpdate();
 	}
 
+	
 	@Logged
 	public Session createSessionForUser(final User aUser, final Date anExpiresAt) {
 		// removeAllSessionsForUser(aUser);
@@ -47,13 +45,9 @@ public class SessionDAO extends AbstractDAO<String, Session> {
 		return session;
 	}
 
-	public Session getSessionById(final String sessionId) {
-		return entityManager.find(Session.class, sessionId);
-	}
-
 	@Logged
 	public Session getSessionForUser(final User aUser) {
-		return entityManager.createQuery("from Session where user = ? and expiresAt > current_date()", Session.class).getSingleResult();
+		return entityManager.createQuery("from Session where user = ? and expiresAt > current_date()", Session.class).setParameter(1, aUser).getSingleResult();
 	}
 
 	@Logged

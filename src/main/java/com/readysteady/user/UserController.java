@@ -11,6 +11,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import com.cpn.apiomatic.annotation.Documentation;
 import com.cpn.apiomatic.logging.Logged;
 import com.readysteady.DefaultExceptionHandler;
+import com.readysteady.exception.UnauthorizedActionException;
 import com.readysteady.mail.Mailer;
 import com.readysteady.user.session.Session;
 
@@ -34,9 +36,6 @@ public class UserController extends DefaultExceptionHandler {
 	UserDAO userDAO;
 
 	@Autowired
-	ClaimCheckDAO claimCheckDAO;
-
-	@Autowired
 	Mailer mailer;
 	@Autowired
 	String fromEmailAddress;
@@ -50,9 +49,11 @@ public class UserController extends DefaultExceptionHandler {
 	@Autowired
 	SessionManager sessionManager;
 
+	private RoleManager roleManager;
+
 	@Logged
 	@Documentation("Api persist the user by associating a certificate to the user.")
-	@RequestMapping(method = RequestMethod.POST, consumes = { "application/json", "application/xml" })
+	@RequestMapping(method = RequestMethod.POST)
 	public @ResponseBody
 	User addUser(@RequestBody final User aUser) throws UserAlreadyExistsException {
 		final User existingUser = userDAO.findByEmail(aUser.getEmail());
@@ -66,75 +67,43 @@ public class UserController extends DefaultExceptionHandler {
 	@RequestMapping(method = RequestMethod.POST, value = "/session")
 	public @ResponseBody
 	Session authenticate(@RequestBody final User aCredential) throws NoSuchUserException {
-		return sessionManager.createSessionForUser(authenticator.authenticate(aCredential));
-	}
-
-	@RequestMapping(value = "/name/{name}", method = RequestMethod.GET)
-	@Logged
-	public @ResponseBody
-	User findByName(@PathVariable final String name) {
-		return userDAO.findByName(name);
-	}
-
-	public void sendClaimCheck(final User aUser) {
-		final ClaimCheck claimCheck = claimCheckDAO.makeClaimCheckForUser(aUser);
-		final String body = "You (or someone with your email) signed up for our Private Cloud. Please click on the following link to activate your account http://" + publicAddress + (publicPort == "80" ? "" : ":" + publicPort) + "/Provision/claimCheck/" + claimCheck.getId();
-		mailer.sendMail("tsavo@clearpathnet.com", aUser.getEmail(), "Welcome to ClearPath Networks Private Cloud!", body);
-		// return claimCheckDAO.getClaimCheckForUser(aUser).getId();
-	}
-
-	@RequestMapping(method = RequestMethod.DELETE, value = "/session/{sessionId}")
-	public @ResponseBody
-	void signOut(@PathVariable final String sessionId) {
-		sessionManager.invalidateSession(sessionId);
+		User user = userDAO.findByEmailAndPassword(aCredential.getEmail(), aCredential.getPassword());
+		if (user == null) {
+			throw new NoSuchUserException("No user with those credentials.");
+		}
+		return sessionManager.createSessionForUser(user);
 	}
 
 	@Logged
-	@RequestMapping(method = RequestMethod.DELETE, value = "/{anEmail}")
+	@RequestMapping(value = "/{id}", method = RequestMethod.PUT)
 	@Transactional
 	public @ResponseBody
-	void deleteUser(@PathVariable final String anEmail) throws Exception {
-		if (StringUtils.isEmpty(anEmail)) {
-			throw new InvalidUserArgumentsException("Invalid Argument:" + anEmail);
-		}
-		final User existingUser = userDAO.findByEmail(anEmail);
-		if (existingUser == null) {
-			throw new NoSuchUserException("User doesn't exist:" + anEmail);
-		}
-		userDAO.remove(existingUser);
-	}
-
-	@Logged
-	@RequestMapping(value = { "", "/{id}" }, method = RequestMethod.PUT)
-	@Transactional
-	public @ResponseBody
-	User updateUser(@RequestBody User aUser) throws Exception {
-		final User existingUser = userDAO.findById(aUser.getId());
+	User updateUser(@PathVariable("id") String aUserId, @RequestBody User aUser, @RequestHeader("X-auth-sessionId") String aSessionId) throws Exception {
+		Session session = sessionManager.sessionCheck(aSessionId);
+		final User existingUser = userDAO.findById(aUserId);
 		if (existingUser == null) {
 			throw new NoSuchUserException("User doesn't exist:" + aUser.getId());
 		}
-		return userDAO.mergeUser(aUser);
-	}
-
-	@Logged
-	@RequestMapping(method = RequestMethod.GET)
-	@Transactional
-	public @ResponseBody
-	List<User> getUsers() {
-		return userDAO.getList();
-	}
-
-	@Logged
-	@RequestMapping(method = RequestMethod.GET, value = "/{anEmail}")
-	@Transactional
-	public @ResponseBody
-	User getUser(@PathVariable final String anEmail) throws Exception {
-		if (StringUtils.isEmpty(anEmail)) {
-			throw new InvalidUserArgumentsException("Invalid Arguments:" + anEmail);
+		if (!existingUser.equals(session.getUser())) {
+			throw new UnauthorizedActionException("You do not have the rights to modify that user.");
 		}
-		User existinguser = userDAO.findByEmail(anEmail);
+		aUser.setId(existingUser.getId());
+		aUser.setRole(existingUser.getRole());
+		return entityManager.merge(aUser);
+	}
+
+	@Logged
+	@RequestMapping(method = RequestMethod.GET, value = "/{anUserId}")
+	@Transactional
+	public @ResponseBody
+	User getUser(@PathVariable final String aUserId, @RequestHeader("X-auth-sessionId") String aSessionId) throws Exception {
+		Session session = sessionManager.sessionCheck(aSessionId);
+		User existinguser = userDAO.findById(aUserId);
 		if (existinguser == null) {
-			throw new NoSuchUserException("User doesn't exist:" + anEmail);
+			throw new NoSuchUserException("User doesn't exist: " + aUserId);
+		}
+		if(!session.getUser().equals(existinguser) && (!session.getUser().getMatches().contains(aUserId))){
+			throw new UnauthorizedActionException("You do not have permission to view that user.");
 		}
 		return existinguser;
 	}

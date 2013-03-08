@@ -19,11 +19,11 @@ public class UserDAO extends AbstractDAO<String, User> {
 		entityManager.persist(aUser);
 	}
 
-	public User findByUsernameAndPassword(final String aUserName, final String aPassword) {
+	public User findByEmailAndPassword(final String aUserName, final String aPassword) {
 		try {
 			return entityManager
-					.createQuery("from User where username like :username and password like :password", User.class)
-					.setParameter("username", aUserName).setParameter("password", aPassword).getSingleResult();
+					.createQuery("from User where email like :email and password like :password", User.class)
+					.setParameter("email", aUserName).setParameter("password", aPassword).getSingleResult();
 		} catch (Exception e) {
 			logger.trace(e.getMessage(), e);
 			return null;
